@@ -19,3 +19,6 @@ runs/*
 graphrag_index_*/output/
 graphrag_index_*/cache/
 graphrag_index_*/logs/
+
+graphrag_index_nlp/input/*
+!graphrag_index_nlp/input/.gitkeep

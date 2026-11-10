@@ -1,11 +1,13 @@
 """Phase 2: stratified question sample + deduplicated paragraph corpus with sentence provenance.
 
 Outputs (data/processed/):
-  questions_full.jsonl / questions_pilot.jsonl   sampled questions (pilot = first n_pilot of full)
-  paragraphs_{full,pilot}.parquet                para_id, title, text, n_sents
-  sentences_{full,pilot}.parquet                 title, sent_id, text  (gold-fact lookup key)
+  questions_{full,pilot,proto}.jsonl   sampled questions (pilot/proto = prefixes of full)
+  paragraphs_{...}.parquet             para_id, title, text, n_sents, doc_id
+  sentences_{...}.parquet              title, sent_id, text  (gold-fact lookup key)
   stats.json
-And graphrag_index/input/: one .txt per paragraph of the chosen corpus (default: pilot).
+And graphrag_index/input/: the chosen corpus (default: proto), `group_size` paragraphs per .txt.
+Grouping is by sorted title (p00000-p00004, ...), independent of which question a paragraph
+belongs to, so gold paragraphs are not systematically co-located in one extraction call.
 
 Gold supporting facts are NOT used to build anything; they are only checked for presence.
 """
@@ -25,6 +27,7 @@ import yaml
 app = typer.Typer(add_completion=False)
 OUT = Path("data/processed")
 GR_INPUT = Path("graphrag_index/input")
+NLP_INPUT = Path("graphrag_index_nlp/input")  # NLP graph: 1 paragraph per file (co-occurrence is per file)
 
 
 def stratified_sample(data: list[dict], n: int, seed: int) -> list[dict]:
@@ -69,14 +72,29 @@ def check_gold(questions: list[dict], sents: pd.DataFrame) -> int:
     return sum((t, i) not in keys for q in questions for t, i in q["supporting_facts"])
 
 
-def export_graphrag_input(paras: pd.DataFrame) -> None:
+def export_graphrag_input(paras: pd.DataFrame, group_size: int) -> pd.DataFrame:
+    """Write paragraphs to GraphRAG input, `group_size` per document (amortises the ~1.9k-token
+    extraction prompt). Returns paras with a doc_id column for provenance."""
     if GR_INPUT.exists():
         shutil.rmtree(GR_INPUT)
     GR_INPUT.mkdir(parents=True)
     (GR_INPUT / ".gitkeep").touch()
+    paras = paras.copy()
+    paras["doc_id"] = [f"d{i // group_size:05d}" for i in range(len(paras))]
+    for doc_id, grp in paras.groupby("doc_id", sort=True):
+        # each paragraph keeps its Wikipedia title as a header line
+        body = "\n\n".join(f"{r.title}\n{r.text}" for r in grp.itertuples())
+        (GR_INPUT / f"{doc_id}.txt").write_text(body + "\n", encoding="utf-8")
+    return paras
+
+
+def export_nlp_input(paras: pd.DataFrame) -> None:
+    if NLP_INPUT.exists():
+        shutil.rmtree(NLP_INPUT)
+    NLP_INPUT.mkdir(parents=True)
+    (NLP_INPUT / ".gitkeep").touch()
     for r in paras.itertuples():
-        # filename = para_id (titles may contain illegal chars); title kept as first line
-        (GR_INPUT / f"{r.para_id}.txt").write_text(f"{r.title}\n{r.text}\n", encoding="utf-8")
+        (NLP_INPUT / f"{r.para_id}.txt").write_text(f"{r.title}\n{r.text}\n", encoding="utf-8")
 
 
 def _safe(s: str) -> str:
@@ -84,20 +102,27 @@ def _safe(s: str) -> str:
 
 
 @app.command()
-def main(config: str = "configs/experiment.yaml", export: str = "pilot") -> None:
+def main(config: str = "configs/experiment.yaml", export: str = "proto") -> None:
     cfg = yaml.safe_load(open(config))
     d = cfg["data"]
     data = json.load(open(d["hotpot_file"], encoding="utf-8"))
     full = stratified_sample(data, d["n_questions"], cfg["seed"])
     pilot = full[: d["n_pilot"]]
+    proto = full[: d["n_proto"]]
     OUT.mkdir(parents=True, exist_ok=True)
 
     stats = {"source_questions": len(data)}
-    for name, qs in [("full", full), ("pilot", pilot)]:
+    for name, qs in [("full", full), ("pilot", pilot), ("proto", proto)]:
         with open(OUT / f"questions_{name}.jsonl", "w", encoding="utf-8") as f:
             for q in qs:
                 f.write(json.dumps(q, ensure_ascii=False) + "\n")
         paras, sents, conflicts = build_corpus(qs)
+        if name == export:
+            paras = export_graphrag_input(paras, d["group_size"])
+            export_nlp_input(paras)
+            stats["graphrag_input"] = {"corpus": name, "paragraphs": len(paras),
+                                       "files": paras.doc_id.nunique(),
+                                       "group_size": d["group_size"]}
         paras.to_parquet(OUT / f"paragraphs_{name}.parquet", index=False)
         sents.to_parquet(OUT / f"sentences_{name}.parquet", index=False)
         missing = check_gold(qs, sents)
@@ -109,9 +134,6 @@ def main(config: str = "configs/experiment.yaml", export: str = "pilot") -> None
             "title_conflicts": int(conflicts), "gold_facts_missing": int(missing),
             "approx_tokens": int(paras.text.str.split().str.len().sum() * 1.3),
         }
-        if name == export:
-            export_graphrag_input(paras)
-            stats["graphrag_input"] = {"corpus": name, "files": len(paras)}
 
     json.dump(stats, open(OUT / "stats.json", "w"), indent=2)
     print(json.dumps(stats, indent=2))

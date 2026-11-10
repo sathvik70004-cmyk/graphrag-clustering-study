@@ -1,5 +1,5 @@
 ### GraphRAG 3.3.0 — NLP ("fast" / FastGraphRAG) graph: noun phrases + co-occurrence, NO LLM.
-### Second graph condition. Shares input with graphrag_index/. LLM settings below are unused.
+### Second graph condition. Own input: 1 paragraph per file (co-occurrence is per file). LLM settings below are unused.
 ### Clustering, community reports, retrieval and evaluation are done in src/graphrag_study.
 ### Models are served locally by Ollama through its OpenAI-compatible API (no API cost).
 
@@ -41,7 +41,7 @@ chunking:
 
 input_storage:
   type: file
-  base_dir: "../graphrag_index/input"
+  base_dir: "input"
 output_storage:
   type: file
   base_dir: "output"

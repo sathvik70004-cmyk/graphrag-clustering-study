@@ -21,6 +21,23 @@ completion_models:
       tokens_per_period: ${GRAPHRAG_TPM}     # and under its tokens/minute
       period_in_seconds: 60
 
+  summary_completion_model:
+    # Description merging is plain prose (no delimiters), so the higher-quota Lite model is fine.
+    model_provider: openai
+    model: ${GRAPHRAG_SUMMARY_MODEL}
+    api_base: ${GRAPHRAG_API_BASE}
+    api_key: ${GRAPHRAG_API_KEY}
+    auth_method: api_key
+    call_args:
+      temperature: 0
+    retry:
+      type: exponential_backoff
+    rate_limit:
+      type: sliding_window
+      requests_per_period: ${GRAPHRAG_RPM}
+      tokens_per_period: ${GRAPHRAG_TPM}
+      period_in_seconds: 60
+
 embedding_models:
   default_embedding_model:
     model_provider: openai
@@ -31,16 +48,16 @@ embedding_models:
     retry:
       type: exponential_backoff
 
-concurrent_requests: 1             # single 8 GB GPU: parallel requests were ~3x slower in testing
+concurrent_requests: 4             # online API; pacing is enforced by rate_limit (RPM/TPM)
 
 input:
   type: text
 
-# Each HotpotQA paragraph (~120 tokens) is its own document, so 1 chunk = 1 paragraph
-# (keeps sentence provenance). Chunks never span documents.
+# Each document holds group_size (5) HotpotQA paragraphs (max ~1.3k tokens), so 1 chunk = 1 document
+# = 1 extraction call. Chunks never span documents; sentence provenance is recovered by name matching.
 chunking:
   type: tokens
-  size: 1200
+  size: 2000
   overlap: 0
   encoding_model: o200k_base
 
@@ -81,10 +98,10 @@ extract_graph:
   # Wikipedia domain: creative works (films, albums, books, songs, shows) are frequent HotpotQA
   # bridge entities and are missing from GraphRAG's default types. Fixed a priori; not tuned on QA.
   entity_types: [person, organization, geo, event, creative_work, product]
-  max_gleanings: 1
+  max_gleanings: 0                  # prototype: no second "anything missed?" pass (halves calls)
 
 summarize_descriptions:
-  completion_model_id: default_completion_model
+  completion_model_id: summary_completion_model
   prompt: "prompts/summarize_descriptions.txt"
   max_length: 500
 

@@ -9,7 +9,7 @@ data:
 
 models:
   ollama_host: http://localhost:11434
-  llm: gemma3:4b             # dev model (already installed); swap to a stronger model later
+  llm: qwen3-8b-gr            # qwen3:8b, num_ctx 8192, thinking off via reasoning_effort=none
   embedding: embeddinggemma  # already installed
   temperature: 0.0
 

@@ -16,3 +16,6 @@ graphrag_index/input/*
 !graphrag_index/input/.gitkeep
 runs/*
 !runs/.gitkeep
+graphrag_index_*/output/
+graphrag_index_*/cache/
+graphrag_index_*/logs/

@@ -1,187 +1,115 @@
 <title>GraphRAG Clustering Robustness</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,650&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: single reading column (~68ch) with wider figure blocks; findings first, evidence after. */
+/* Plain report: one column, system fonts, simple tables. */
 :root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --fg: #1b2230;
-  --muted: #5b6577;
-  --rule: #d9dee7;
-  --accent: #0e6a70;
-  --accent-soft: #dcefee;
-  --bar: #7aa9ad;
-  --base: #b5651d;
-  --good: #2f7d4f;
-  --warn: #a2611a;
-  --font-display: "Source Serif 4", Georgia, "Times New Roman", serif;
-  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --bg: #ffffff;
+  --fg: #1f1f1f;
+  --muted: #5f5f5f;
+  --rule: #d4d4d4;
+  --bar: #8a8a8a;
+  --base: #1f1f1f;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #12161d; --surface: #1a2029; --fg: #e3e7ee; --muted: #9aa4b5; --rule: #2c3442;
-    --accent: #5cc3c8; --accent-soft: #173a3d; --bar: #3f7f84; --base: #e0a060;
-    --good: #6cc48f; --warn: #e0a060; color-scheme: dark;
-  }
+  :root:not([data-theme="light"]) { --bg: #161616; --fg: #e4e4e4; --muted: #a0a0a0; --rule: #3a3a3a; --bar: #8a8a8a; --base: #e4e4e4; color-scheme: dark; }
 }
-:root[data-theme="dark"] {
-  --bg: #12161d; --surface: #1a2029; --fg: #e3e7ee; --muted: #9aa4b5; --rule: #2c3442;
-  --accent: #5cc3c8; --accent-soft: #173a3d; --bar: #3f7f84; --base: #e0a060;
-  --good: #6cc48f; --warn: #e0a060; color-scheme: dark;
-}
-* { box-sizing: border-box; }
+:root[data-theme="dark"] { --bg: #161616; --fg: #e4e4e4; --muted: #a0a0a0; --rule: #3a3a3a; --bar: #8a8a8a; --base: #e4e4e4; color-scheme: dark; }
 body {
   background: var(--bg); color: var(--fg);
-  font: 16px/1.6 var(--font-body);
+  font: 16px/1.55 Georgia, "Times New Roman", serif;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: 40px 64px;
+  padding-block: 32px 56px;
 }
-main { max-width: 860px; margin: 0 auto; display: grid; gap: 48px; }
-.col { max-width: 68ch; }
-h1, h2 { font-family: var(--font-display); font-weight: 650; text-wrap: balance; margin: 0; line-height: 1.2; }
-h1 { font-size: clamp(1.9rem, 4.5vw, 2.6rem); letter-spacing: -0.01em; }
-h2 { font-size: 1.45rem; }
-h3 { font-size: 1rem; font-weight: 600; margin: 0; }
-p { margin: 0; }
-section { display: grid; gap: 16px; }
-.eyebrow { font: 500 0.75rem/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
-.lede { font-size: 1.1rem; color: var(--muted); }
-.meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font: 0.85rem var(--font-mono); color: var(--muted); }
-.callout {
-  background: var(--accent-soft); border-left: 3px solid var(--accent);
-  padding: 14px 18px; border-radius: 4px; font-size: 0.95rem;
-}
-.findings { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-.finding { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 16px 18px; display: grid; gap: 6px; align-content: start; }
-.finding .num { font: 600 1.6rem/1 var(--font-display); color: var(--accent); }
-.finding p { font-size: 0.93rem; color: var(--muted); }
-.grid-axes { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
-.axis { border-top: 2px solid var(--fg); padding-top: 8px; }
-.axis span { display: block; font: 0.85rem var(--font-mono); color: var(--muted); }
-.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
-table { border-collapse: collapse; width: 100%; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
-th, td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
-th:first-child, td:first-child, th.l, td.l { text-align: left; }
-thead th { font: 500 0.72rem var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--bg); }
-tbody tr:last-child td { border-bottom: 0; }
-tr.base td { color: var(--base); }
-td.down { color: var(--warn); } td.up { color: var(--good); }
-.mono { font-family: var(--font-mono); }
-.note { font-size: 0.85rem; color: var(--muted); }
-figure { margin: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 16px; display: grid; gap: 8px; }
-figcaption { font-size: 0.85rem; color: var(--muted); }
-#chart { width: 100%; height: auto; display: block; }
-#chart text { fill: var(--fg); font-family: var(--font-mono); font-size: 11px; }
-#chart .muted { fill: var(--muted); }
-.examples { display: grid; gap: 12px; }
-.ex { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 18px; display: grid; gap: 4px; }
-.ex .q { font-weight: 500; }
-.ex .a { font: 0.88rem var(--font-mono); color: var(--muted); }
-.ex .a b { color: var(--fg); font-weight: 500; }
-ol, ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
-code { font-family: var(--font-mono); font-size: 0.88em; background: var(--accent-soft); padding: 1px 5px; border-radius: 3px; }
-a { color: var(--accent); }
+main { max-width: 760px; margin: 0 auto; }
+h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 6px; font-weight: normal; }
+h2 { font-size: 1.2rem; margin: 36px 0 10px; font-weight: bold; }
+p, li { max-width: 68ch; }
+p { margin: 0 0 12px; }
+ul, ol { margin: 0 0 12px; padding-left: 1.3em; }
+li { margin-bottom: 6px; }
+.sub { color: var(--muted); margin-bottom: 20px; }
+.small { font-size: 0.88rem; color: var(--muted); }
+.table-wrap { overflow-x: auto; margin: 0 0 10px; }
+table { border-collapse: collapse; width: 100%; font: 0.88rem/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; }
+th, td { padding: 5px 10px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { font-weight: 600; border-bottom: 1px solid var(--fg); }
+th.l, td.l { text-align: left; }
+#chart { width: 100%; height: auto; display: block; margin: 4px 0 6px; }
+#chart text { fill: var(--fg); font: 11px system-ui, -apple-system, "Segoe UI", sans-serif; }
 </style>
 
 <main>
-  <header class="col" style="display:grid;gap:14px">
-    <div class="eyebrow">Prototype results · HotpotQA dev (distractor)</div>
-    <h1>Does more stable clustering improve GraphRAG answers?</h1>
-    <p class="lede">A working prototype of the full pipeline: build a knowledge graph, cluster it three ways, remove edges, then measure graph stability, evidence retrieval and answer quality.</p>
-    <div class="meta"><span>20 questions</span><span>200 Wikipedia paragraphs</span><span>1,120 scored answers</span><span>local qwen3:8b · RTX 4060</span></div>
-  </header>
+  <h1>Does more stable clustering improve GraphRAG answers?</h1>
+  <p class="sub">Prototype results. HotpotQA dev (distractor), 20 questions, 200 Wikipedia paragraphs, 1,120 scored answers. Local qwen3:8b on an RTX 4060.</p>
 
-  <div class="callout col">With 20 questions, one question moves exact match by 5 points. Gaps of 1–2 questions are noise. This prototype shows the pipeline works end to end; it cannot yet say which clustering method is better.</div>
+  <p>The prototype runs the full pipeline: build a knowledge graph, cluster it three ways, remove edges, then measure graph stability, evidence retrieval and answer quality.</p>
+  <p><b>Note on sample size.</b> With 20 questions, one question moves exact match by 5 points, so gaps of 1–2 questions are noise. The prototype shows the pipeline works; it cannot yet say which clustering method is better.</p>
 
-  <section>
-    <div class="eyebrow">Key findings</div>
-    <div class="findings">
-      <div class="finding"><div class="num">70% → 70%</div><h3>Edge removal does not break multi-hop bridges</h3><p>The two gold paragraphs stay linked in every condition. In HotpotQA they are almost always joined by one entity named in both, not by a graph path.</p></div>
-      <div class="finding"><div class="num">±1.6 pts</div><h3>Evidence retrieval barely moves</h3><p>Supporting-fact recall changes by at most 1.6 points under critical-edge removal for local search.</p></div>
-      <div class="finding"><div class="num">5 questions</div><h3>Community summaries carry facts the graph lost</h3><p>Global search answered 5 questions that dense retrieval missed, including one whose graph link was broken.</p></div>
-      <div class="finding"><div class="num">ARI 0.88</div><h3>Leiden's own randomness is large</h3><p>Two Leiden runs on the same unchanged NLP graph agree only at ARI 0.88, close to the effect of removing edges (0.79).</p></div>
-    </div>
-  </section>
+  <h2>Key findings</h2>
+  <ol>
+    <li><b>Edge removal does not break multi-hop bridges.</b> The two gold paragraphs stay linked in every condition (70% of questions for the LLM graph, 100% for the NLP graph). In HotpotQA they are almost always joined by one entity named in both, not by a graph path.</li>
+    <li><b>Evidence retrieval barely moves.</b> Supporting-fact recall changes by at most 1.6 points under critical-edge removal for local search.</li>
+    <li><b>Community summaries can carry facts the graph lost.</b> Global search answered 5 questions that dense retrieval missed, including one whose graph link was broken.</li>
+    <li><b>Leiden's own randomness is large.</b> Two Leiden runs on the same unchanged NLP graph agree only at ARI 0.88, close to the effect of removing edges (0.79).</li>
+  </ol>
 
-  <section>
-    <div class="eyebrow">What was compared</div>
-    <h2>One question, every combination</h2>
-    <div class="grid-axes">
-      <div class="axis"><h3>Graph</h3><span>LLM-extracted (+ entity merging)</span><span>NLP noun-phrase</span></div>
-      <div class="axis"><h3>Clustering</h3><span>Leiden</span><span>Louvain</span><span>k-core hierarchy</span></div>
-      <div class="axis"><h3>Condition</h3><span>clean</span><span>5% random removal ×2</span><span>top-5% betweenness</span></div>
-      <div class="axis"><h3>Retrieval</h3><span>local · routed · global</span><span>baselines: BM25, dense</span></div>
-    </div>
-    <p class="note col">Same answer model, prompt and evidence budget (10 sentences + up to 3 community summaries) everywhere. Global search runs on the clean graph only.</p>
-  </section>
+  <h2>What was compared</h2>
+  <ul>
+    <li>Graph: LLM-extracted (with entity merging), NLP noun-phrase.</li>
+    <li>Clustering: Leiden, Louvain, k-core hierarchy.</li>
+    <li>Condition: clean; 5% random edge removal (2 repeats); top-5% edges by betweenness ("critical").</li>
+    <li>Retrieval: local, routed, global; baselines BM25 and dense.</li>
+  </ul>
+  <p class="small">Same answer model, prompt and evidence budget (10 sentences plus up to 3 community summaries) everywhere. Global search runs on the clean graph only.</p>
 
-  <section>
-    <div class="eyebrow">Answer quality · clean graph</div>
-    <h2>No graph method clearly beats dense retrieval yet</h2>
-    <figure>
-      <svg id="chart" role="img" aria-label="Answer F1 by configuration on the clean graph"></svg>
-      <figcaption>Answer F1 per configuration (clean graph). The orange line is the dense-retrieval baseline (0.535).</figcaption>
-    </figure>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Retrieval</th><th class="l">Graph</th><th class="l">Clustering</th><th>EM</th><th>F1</th><th>Evidence recall@10</th><th>Context tokens</th></tr></thead>
-        <tbody id="clean-body"></tbody>
-      </table>
-    </div>
-    <p class="note col">Evidence recall is the share of gold supporting sentences among the 10 retrieved. Global search returns summaries, not sentences, so it has no evidence recall.</p>
-  </section>
+  <h2>Answer quality on the clean graph</h2>
+  <p>No graph method clearly beats dense retrieval yet.</p>
+  <svg id="chart" role="img" aria-label="Answer F1 by configuration on the clean graph"></svg>
+  <p class="small">Answer F1 per configuration. The vertical line is the dense-retrieval baseline (0.535).</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th class="l">Retrieval</th><th class="l">Graph</th><th class="l">Clustering</th><th>EM</th><th>F1</th><th>Evidence recall@10</th><th>Context tokens</th></tr></thead>
+      <tbody id="clean-body"></tbody>
+    </table>
+  </div>
+  <p class="small">Evidence recall is the share of gold supporting sentences among the 10 retrieved. Global search returns summaries, not sentences, so it has no evidence recall.</p>
 
-  <section>
-    <div class="eyebrow">Edge removal</div>
-    <h2>Answers shift a little; evidence hardly at all</h2>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Retrieval</th><th class="l">Graph</th><th class="l">Clustering</th><th>F1 clean</th><th>F1 random</th><th>F1 critical</th><th>Recall clean</th><th>Recall critical</th></tr></thead>
-        <tbody id="pert-body"></tbody>
-      </table>
-    </div>
-    <p class="note col">Colored values differ from the clean graph by 0.03 or more. Random removal is averaged over 2 repeats.</p>
-  </section>
+  <h2>Effect of edge removal</h2>
+  <p>Answers shift a little; evidence hardly at all.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th class="l">Retrieval</th><th class="l">Graph</th><th class="l">Clustering</th><th>F1 clean</th><th>F1 random</th><th>F1 critical</th><th>Recall clean</th><th>Recall critical</th></tr></thead>
+      <tbody id="pert-body"></tbody>
+    </table>
+  </div>
+  <p class="small">Local and routed retrieval. Random removal is averaged over 2 repeats.</p>
 
-  <section>
-    <div class="eyebrow">Graph stability · level 0</div>
-    <h2>How much do the communities change?</h2>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th class="l">Graph</th><th class="l">Clustering</th><th>ARI random</th><th>ARI critical</th><th>Seed-noise ARI</th><th>Communities still connected (critical)</th><th>Largest piece (critical)</th></tr></thead>
-        <tbody id="stab-body"></tbody>
-      </table>
-    </div>
-    <p class="note col">ARI 1 means the communities are identical to the clean graph's. Seed-noise ARI compares two runs on the same clean graph; k-core is deterministic. The LLM graph is fragmented (largest connected piece about 4–6% of nodes), so Leiden and Louvain mostly recover its separate pieces and behave alike.</p>
-  </section>
+  <h2>Graph stability (level 0)</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th class="l">Graph</th><th class="l">Clustering</th><th>ARI random</th><th>ARI critical</th><th>Seed-noise ARI</th><th>Communities still connected (critical)</th><th>Largest piece (critical)</th></tr></thead>
+      <tbody id="stab-body"></tbody>
+    </table>
+  </div>
+  <p class="small">ARI 1 means the communities are identical to the clean graph's. Seed-noise ARI compares two runs on the same clean graph; k-core is deterministic. The LLM graph is fragmented (its largest connected piece is about 4–6% of nodes), so Leiden and Louvain mostly recover its separate pieces and behave alike.</p>
 
-  <section>
-    <div class="eyebrow">Examples</div>
-    <h2>What the numbers look like up close</h2>
-    <div class="examples">
-      <div class="ex"><div class="q">Critical-edge removal changed the answer</div><div class="a">Song written by Johnny Russell: gold <b>Buck Owens</b> · clean graph <b>Buck Owens</b> · after critical removal <b>The Beatles</b> (local, NLP graph, Leiden)</div></div>
-      <div class="ex"><div class="q">Critical-edge removal changed the answer</div><div class="a">George Reed's teammate: gold <b>Johnny D. Bright</b> · clean graph <b>Johnny Bright</b> · after critical removal <b>Damon Allen</b> (local, LLM graph, Leiden)</div></div>
-      <div class="ex"><div class="q">A community summary rescued a broken graph link</div><div class="a">Developer of the 41st Tactical Squadron's jets: gold <b>the Mikoyan design bureau</b> · global search <b>Mikoyan design bureau</b>. The LLM spelled the plane "MIKODYAN MIG-29", so no graph path existed.</div></div>
-      <div class="ex"><div class="q">All evidence found, answer still wrong</div><div class="a">Chamberlain of the Merrie Monarch: gold <b>Colonel Charles Hastings Judd</b> · predicted <b>George W. Macfarlane</b>. The 8B answer model is a bottleneck.</div></div>
-    </div>
-  </section>
+  <h2>Examples</h2>
+  <ul>
+    <li><b>Critical-edge removal changed the answer.</b> Song written by Johnny Russell: gold "Buck Owens"; clean graph "Buck Owens"; after critical removal "The Beatles" (local, NLP graph, Leiden).</li>
+    <li><b>Critical-edge removal changed the answer.</b> George Reed's teammate: gold "Johnny D. Bright"; clean graph "Johnny Bright"; after critical removal "Damon Allen" (local, LLM graph, Leiden).</li>
+    <li><b>A community summary rescued a broken graph link.</b> Developer of the 41st Tactical Squadron's jets: gold "the Mikoyan design bureau"; global search "Mikoyan design bureau". The LLM spelled the plane "MIKODYAN MIG-29", so no graph path existed.</li>
+    <li><b>All evidence found, answer still wrong.</b> Chamberlain of the Merrie Monarch: gold "Colonel Charles Hastings Judd"; predicted "George W. Macfarlane". The 8B answer model is a bottleneck.</li>
+  </ul>
 
-  <section class="col">
-    <div class="eyebrow">Next steps</div>
-    <h2>Questions for the full study</h2>
-    <ol>
-      <li><b>Damage entity ↔ paragraph links too?</b> Removing graph edges alone cannot break HotpotQA bridges, so the perturbation may need to cover missing mentions as well.</li>
-      <li><b>Keep entity merging in the method?</b> It fixes naming drift with 4 hand-checked merges here, at the cost of a step standard GraphRAG does not have.</li>
-      <li><b>Use a stronger answer model?</b> The 8B model often answers wrongly with all gold evidence in hand.</li>
-      <li><b>Scale to 500 questions.</b> Build the LLM graph on free cloud GPUs or a few dollars of paid API; everything else runs locally.</li>
-    </ol>
-    <p class="note">Code, data pipeline and raw result tables: private GitHub repo <span class="mono">graphrag-clustering-study</span>.</p>
-  </section>
+  <h2>Questions for the full study</h2>
+  <ol>
+    <li><b>Damage entity–paragraph links too?</b> Removing graph edges alone cannot break HotpotQA bridges, so the perturbation may need to cover missing mentions as well.</li>
+    <li><b>Keep entity merging in the method?</b> It fixes naming drift (4 hand-checked merges here), but it is a step standard GraphRAG does not have.</li>
+    <li><b>Use a stronger answer model?</b> The 8B model often answers wrongly with all gold evidence in hand.</li>
+    <li><b>Scale to 500 questions.</b> Build the LLM graph on free cloud GPUs or a few dollars of paid API; everything else runs locally.</li>
+  </ol>
+  <p class="small">Code, pipeline and raw result tables: private GitHub repo graphrag-clustering-study.</p>
 </main>
 
 <script>
@@ -194,49 +122,42 @@ const CLEAN = [
   ["global","LLM","k-core",0.3,0.484,null,48],["global","LLM","Leiden",0.3,0.546,null,61],["global","LLM","Louvain",0.3,0.546,null,59],
   ["global","NLP","k-core",0.1,0.189,null,7],["global","NLP","Leiden",0.2,0.409,null,46],["global","NLP","Louvain",0.25,0.422,null,38],
 ];
-// retrieval, graph, clustering, f1 clean, random, critical, recall clean, critical
 const PERT = [
   ["local","LLM","k-core",0.519,0.521,0.519,0.762,0.746],["local","LLM","Leiden",0.469,0.471,0.429,0.762,0.746],["local","LLM","Louvain",0.469,0.471,0.469,0.762,0.746],
   ["local","NLP","k-core",0.601,0.543,0.561,0.796,0.796],["local","NLP","Leiden",0.535,0.484,0.5,0.796,0.796],["local","NLP","Louvain",0.61,0.537,0.575,0.796,0.796],
   ["routed","LLM","k-core",0.529,0.539,0.579,0.7,0.742],["routed","LLM","Leiden",0.513,0.476,0.479,0.8,0.8],["routed","LLM","Louvain",0.513,0.493,0.479,0.8,0.8],
   ["routed","NLP","k-core",0.501,0.476,0.505,0.638,0.754],["routed","NLP","Leiden",0.508,0.528,0.54,0.788,0.788],["routed","NLP","Louvain",0.558,0.522,0.59,0.812,0.812],
 ];
-// graph, clustering, ari random, ari critical, seed noise, conn critical %, lcc critical
 const STAB = [
   ["LLM (merged)","Leiden",0.944,0.873,"1.00","95%","4%"],["LLM (merged)","Louvain",0.944,0.873,"1.00","95%","4%"],["LLM (merged)","k-core",0.911,0.785,"—","96%","4%"],
   ["NLP","Leiden",0.786,0.785,"0.88","100%","94%"],["NLP","Louvain",0.875,0.886,"1.00","100%","94%"],["NLP","k-core",1.0,0.648,"—","50%","94%"],
 ];
 const f2 = v => v == null ? "—" : v.toFixed(2);
 const pct = v => v == null ? "—" : Math.round(v * 100) + "%";
-const cell = (v, ref) => { const d = v - ref; const c = Math.abs(d) >= 0.03 ? (d < 0 ? "down" : "up") : ""; return `<td class="${c}">${f2(v)}</td>`; };
-
 document.getElementById("clean-body").innerHTML = CLEAN.map(r =>
-  `<tr class="${r[1]==="—"?"base":""}"><td>${r[0]}</td><td class="l">${r[1]}</td><td class="l">${r[2]}</td><td>${pct(r[3])}</td><td>${f2(r[4])}</td><td>${pct(r[5])}</td><td>${r[6]}</td></tr>`).join("");
+  `<tr><td class="l">${r[0]}</td><td class="l">${r[1]}</td><td class="l">${r[2]}</td><td>${pct(r[3])}</td><td>${f2(r[4])}</td><td>${pct(r[5])}</td><td>${r[6]}</td></tr>`).join("");
 document.getElementById("pert-body").innerHTML = PERT.map(r =>
-  `<tr><td>${r[0]}</td><td class="l">${r[1]}</td><td class="l">${r[2]}</td><td>${f2(r[3])}</td>${cell(r[4],r[3])}${cell(r[5],r[3])}<td>${pct(r[6])}</td><td>${pct(r[7])}</td></tr>`).join("");
+  `<tr><td class="l">${r[0]}</td><td class="l">${r[1]}</td><td class="l">${r[2]}</td><td>${f2(r[3])}</td><td>${f2(r[4])}</td><td>${f2(r[5])}</td><td>${pct(r[6])}</td><td>${pct(r[7])}</td></tr>`).join("");
 document.getElementById("stab-body").innerHTML = STAB.map(r =>
   `<tr><td class="l">${r[0]}</td><td class="l">${r[1]}</td><td>${f2(r[2])}</td><td>${f2(r[3])}</td><td>${r[4]}</td><td>${r[5]}</td><td>${r[6]}</td></tr>`).join("");
 
-// horizontal bar chart of clean F1
 (function () {
   const svg = document.getElementById("chart"), NS = "http://www.w3.org/2000/svg";
   const rows = CLEAN.filter(r => r[1] !== "—").slice().sort((a, b) => b[4] - a[4]);
-  const L = 150, R = 44, T = 10, rowH = 20, W = 640, max = 0.7, plotW = W - L - R;
-  const H = T + rows.length * rowH + 28;
+  const L = 150, R = 44, T = 6, rowH = 18, W = 640, max = 0.7, plotW = W - L - R;
+  const H = T + rows.length * rowH + 24;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const x = v => L + (v / max) * plotW;
   const el = (n, a, t) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); if (t != null) e.textContent = t; svg.appendChild(e); return e; };
-  [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7].forEach(t => {
-    el("line", { x1: x(t), x2: x(t), y1: T, y2: T + rows.length * rowH, stroke: "var(--rule)", "stroke-width": 1 });
-    el("text", { x: x(t), y: T + rows.length * rowH + 16, "text-anchor": "middle", class: "muted" }, t.toFixed(1));
-  });
+  el("line", { x1: L, x2: L, y1: T, y2: T + rows.length * rowH, stroke: "var(--fg)", "stroke-width": 1 });
+  [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7].forEach(t =>
+    el("text", { x: x(t), y: T + rows.length * rowH + 15, "text-anchor": "middle" }, t.toFixed(1)));
   rows.forEach((r, i) => {
     const y = T + i * rowH;
-    el("text", { x: L - 8, y: y + 14, "text-anchor": "end" }, `${r[0]} · ${r[1]} · ${r[2]}`);
-    el("rect", { x: L, y: y + 4, width: Math.max(1, x(r[4]) - L), height: rowH - 8, rx: 2, fill: "var(--bar)" });
-    el("text", { x: x(r[4]) + 5, y: y + 14, class: "muted" }, r[4].toFixed(2));
+    el("text", { x: L - 8, y: y + 13, "text-anchor": "end" }, `${r[0]}, ${r[1]}, ${r[2]}`);
+    el("rect", { x: L, y: y + 4, width: Math.max(1, x(r[4]) - L), height: rowH - 8, fill: "var(--bar)" });
+    el("text", { x: x(r[4]) + 5, y: y + 13 }, r[4].toFixed(2));
   });
-  const bx = x(0.535);
-  el("line", { x1: bx, x2: bx, y1: T - 4, y2: T + rows.length * rowH, stroke: "var(--base)", "stroke-width": 2, "stroke-dasharray": "4 3" });
+  el("line", { x1: x(0.535), x2: x(0.535), y1: T, y2: T + rows.length * rowH, stroke: "var(--base)", "stroke-width": 1, "stroke-dasharray": "3 3" });
 })();
 </script>

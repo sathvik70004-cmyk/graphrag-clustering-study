@@ -6,6 +6,14 @@ Writes:
   runs/partitions/{graph}/{method}/{condition}_s{seed}.parquet   node, level, community
   runs/graph_metrics.csv                                         one row per graph/method/cond/seed/level
   runs/seed_noise.csv                                            ARI between seeds on the clean graph
+  runs/gold_paths.csv                                            per graph/method/cond/seed/level
+
+Gold-path metrics (multi-hop specific; gold facts used ONLY for evaluation):
+  gold_connected    % of questions whose two gold paragraphs are linked: some entity mentioned in
+                    paragraph 1 and some entity mentioned in paragraph 2 lie in the same connected
+                    component of the (perturbed) graph -> a graph walk CAN reach hop 2
+  gold_same_comm    % of questions where such a pair lies in the same COMMUNITY at that level ->
+                    community-scoped retrieval can find both hops together
 
 Metrics (per level; levels matched by index, coarse -> fine):
   lcc_frac          LCC size of the perturbed graph / original node count
@@ -17,6 +25,7 @@ Metrics (per level; levels matched by index, coarse -> fine):
 """
 from __future__ import annotations
 
+import json
 from itertools import combinations
 from pathlib import Path
 
@@ -27,7 +36,8 @@ import yaml
 from sklearn.metrics import adjusted_rand_score
 
 from graphrag_study.cluster.methods import cluster
-from graphrag_study.graph.load import GRAPHS, load_graph
+from graphrag_study.graph.load import load_graph
+from graphrag_study.graph.provenance import paragraph_entities
 from graphrag_study.perturb.edges import conditions
 
 app = typer.Typer(add_completion=False)
@@ -55,15 +65,35 @@ def save_partition(levels, g: ig.Graph, path: Path) -> None:
     pd.DataFrame(rows, columns=["node", "level", "community"]).to_parquet(path, index=False)
 
 
+def gold_pairs(qs: list[dict], pe: dict, idx: dict[str, int]) -> list[tuple[set, set]]:
+    """Per question: (node ids mentioned in gold paragraph 1, ... in gold paragraph 2)."""
+    out = []
+    for q in qs:
+        titles = list(dict.fromkeys(t for t, _ in q["supporting_facts"]))[:2]
+        out.append(tuple({idx[e] for e in pe.get(t, ()) if e in idx} for t in titles))
+    return out
+
+
+def pct_linked(pairs, membership: list[int]) -> float:
+    ok = sum(any(membership[a] == membership[b] for a in A for b in B) for A, B in pairs)
+    return round(100 * ok / max(len(pairs), 1), 1)
+
+
 @app.command()
-def main(config: str = "configs/experiment.yaml", graphs: str = "llm,nlp") -> None:
+def main(config: str = "configs/experiment.yaml", graphs: str = "llm,llm_merged,nlp",
+         corpus: str = "proto") -> None:
     cfg = yaml.safe_load(open(config))
     cc, pc = cfg["clustering"], cfg["perturbation"]
-    rows, noise = [], []
+    qs = [json.loads(l) for l in open(f"data/processed/questions_{corpus}.jsonl", encoding="utf-8")]
+    rows, noise, gold = [], [], []
     for gname in graphs.split(","):
-        g = load_graph(GRAPHS[gname])
+        g = load_graph(gname)
         n = g.vcount()
+        pairs = gold_pairs(qs, paragraph_entities(gname, corpus), {v: i for i, v in enumerate(g.vs["name"])})
         conds = conditions(g, pc["fraction"], pc["random_repeats"])
+        for cname, h in conds.items():
+            gold.append({"graph": gname, "method": "-", "condition": cname, "seed": 0, "level": -1,
+                         "gold_connected": pct_linked(pairs, h.connected_components().membership)})
         for method in cc["methods"]:
             seeds = [0] if method == "kcore" else cc["seeds"]
             clean_by_seed = {}
@@ -74,6 +104,10 @@ def main(config: str = "configs/experiment.yaml", graphs: str = "llm,nlp") -> No
                     lv = clean if cname == "clean" else cluster(h, method, seed,
                                                                 cc.get("max_cluster_size", 10))
                     save_partition(lv, h, RUNS / "partitions" / gname / method / f"{cname}_s{seed}.parquet")
+                    for level, memb in enumerate(lv):
+                        gold.append({"graph": gname, "method": method, "condition": cname,
+                                     "seed": seed, "level": level,
+                                     "gold_same_comm": pct_linked(pairs, memb)})
                     for level in range(max(len(clean), len(lv))):
                         a = clean[min(level, len(clean) - 1)]
                         b = lv[min(level, len(lv) - 1)]
@@ -95,6 +129,18 @@ def main(config: str = "configs/experiment.yaml", graphs: str = "llm,nlp") -> No
     df = pd.DataFrame(rows)
     df.to_csv(RUNS / "graph_metrics.csv", index=False)
     pd.DataFrame(noise).to_csv(RUNS / "seed_noise.csv", index=False)
+    gd = pd.DataFrame(gold)
+    gd.to_csv(RUNS / "gold_paths.csv", index=False)
+    kind = gd.condition.str.replace(r"\d+$", "", regex=True)
+    print("\ngold paragraphs connected in graph (% of questions):")
+    print(gd[gd.method == "-"].assign(kind=kind).groupby(["graph", "kind"]).gold_connected.mean()
+          .unstack().round(1).to_string())
+    print("\ngold paragraphs in the SAME community, level 0 / finest level (% of questions):")
+    gm = gd[gd.method != "-"].assign(kind=kind)
+    fin = gm.groupby(["graph", "method", "condition", "seed"])["level"].transform("max")
+    for name, part in [("level0", gm[gm.level == 0]), ("finest", gm[gm.level == fin])]:
+        print(f"-- {name}")
+        print(part.groupby(["graph", "method", "kind"]).gold_same_comm.mean().unstack().round(1).to_string())
     summary = (df[df.condition != "clean"]
                .assign(kind=lambda d: d.condition.str.replace(r"\d+$", "", regex=True))
                .groupby(["graph", "method", "kind", "level"])

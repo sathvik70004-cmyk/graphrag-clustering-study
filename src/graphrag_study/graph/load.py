@@ -1,6 +1,6 @@
 """Load a frozen GraphRAG output (entities/relationships) as an undirected igraph graph.
 
-Usage:  uv run python -m graphrag_study.graph.load graphrag_index graphrag_index_nlp
+Usage:  uv run python -m graphrag_study.graph.load            # all graphs in GRAPHS
 """
 from __future__ import annotations
 
@@ -10,19 +10,36 @@ from pathlib import Path
 import igraph as ig
 import pandas as pd
 
-GRAPHS = {"llm": "graphrag_index", "nlp": "graphrag_index_nlp"}
+# graph key -> folder holding entities.parquet / relationships.parquet
+GRAPHS = {
+    "llm": "graphrag_index/output",                # standard GraphRAG LLM extraction
+    "llm_merged": "graphrag_index/output_merged",  # + entity merging (graph/merge.py)
+    "nlp": "graphrag_index_nlp/output",            # FastGraphRAG noun-phrase graph
+}
 
 
-def load_tables(index_dir: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    out = Path(index_dir) / "output"
+def _dir(key_or_path: str | Path) -> Path:
+    return Path(GRAPHS.get(str(key_or_path), key_or_path))
+
+
+def load_tables(key_or_path: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    out = _dir(key_or_path)
     return pd.read_parquet(out / "entities.parquet"), pd.read_parquet(out / "relationships.parquet")
 
 
-def load_graph(index_dir: str | Path) -> ig.Graph:
+def aliases(key_or_path: str | Path) -> dict[str, list[str]]:
+    """entity title -> all surface names (just the title unless the graph was merged)."""
+    ents, _ = load_tables(key_or_path)
+    if "aliases" in ents.columns:
+        return {t: list(a) for t, a in zip(ents.title, ents.aliases)}
+    return {t: [t] for t in ents.title}
+
+
+def load_graph(key_or_path: str | Path) -> ig.Graph:
     """Nodes = all entities (isolated ones included); edges = relationships, weight kept.
     Parallel edges are merged (weights summed) and self-loops dropped, so every clustering
     method sees the same simple graph."""
-    ents, rels = load_tables(index_dir)
+    ents, rels = load_tables(key_or_path)
     g = ig.Graph()
     g.add_vertices(ents.title.tolist())
     g.vs["type"] = ents.get("type", pd.Series([""] * len(ents))).fillna("").tolist()
@@ -49,5 +66,6 @@ def stats(g: ig.Graph) -> dict:
 
 
 if __name__ == "__main__":
-    for d in sys.argv[1:] or GRAPHS.values():
-        print(d, stats(load_graph(d)))
+    for k in sys.argv[1:] or GRAPHS:
+        if (_dir(k) / "entities.parquet").exists():
+            print(k, stats(load_graph(k)))

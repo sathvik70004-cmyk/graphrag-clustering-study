@@ -24,3 +24,4 @@ graphrag_index_nlp/input/*
 !graphrag_index_nlp/input/.gitkeep
 .env.*
 !.env.example
+graphrag_index*/run.log

@@ -38,10 +38,10 @@ full pipeline end to end before scaling to the planned 500 questions.
 | 3 | Knowledge graphs (LLM + NLP) + entity merging | ✅ prototype |
 | 4 | Baselines: BM25 / dense | ✅ prototype |
 | 5 | Clustering × perturbation, graph + gold-path metrics | ✅ prototype |
-| 6 | Community reports | ✅ code, ⏳ running |
-| 7 | Retrieval: local / routed / global | ✅ code |
-| 8 | Answering + EM/F1 | ✅ code, ⏳ running |
-| 9 | Analysis, error inspection, demo | ⬜ next |
+| 6 | Community reports | ✅ prototype |
+| 7 | Retrieval: local / routed / global | ✅ prototype |
+| 8 | Answering + EM/F1 | ✅ prototype |
+| 9 | Analysis, error inspection, demo | ✅ prototype ([report](results/prototype_report.md)) |
 
 ## Project log: what we tried, what went wrong, how we worked around it
 
@@ -156,15 +156,27 @@ full pipeline end to end before scaling to the planned 500 questions.
   the graph link was broken, because the fact was in a community summary. Local and routed found
   the gold evidence but the 8B model still answered wrongly, which shows the answer model's limits.
 
+### Phase 9 — Analysis
+- **Prototype results:** see [results/prototype_report.md](results/prototype_report.md)
+  (regenerate with `uv run python -m graphrag_study.eval.analyze`).
+- **Takeaways (20 questions, so indicative only):**
+  - The whole pipeline runs end to end. The QA grid (1,120 answers) took ~10 min on the GPU.
+  - Edge removal barely changes evidence retrieval (recall ±1 point), consistent with the
+    gold-path finding. But critical-edge removal did flip some answers, e.g. *Buck Owens* became
+    *The Beatles* (local and routed retrieval).
+  - Global search answered 5 questions that dense retrieval missed: community summaries can carry
+    a fact whose graph link is broken (the MiG-29 example).
+  - The 8B answer model is a bottleneck: it often has all the gold evidence and still answers
+    wrongly.
+  - Leiden's seed noise is comparable to the perturbation effect on the NLP graph.
+
 ## What we are doing now
-- **Running on the GPU:** community reports (Phase 6), then the full prototype answering grid
-  (Phase 8, ~1,100 answers, ~1.5 h):
-  - baselines: BM25, dense
-  - graphs: `llm_merged`, `nlp`
-  - clustering: Leiden, Louvain, k-core
-  - conditions: clean, random ×2, critical
-  - retrieval: local, routed, and global on the clean graph only
-- **Next (Phase 9):** results tables, failure examples, and a demo for the supervisor.
+- **Prototype complete:** ready to demo to the supervisor.
+- **Open questions for the supervisor:**
+  1. Also damage entity ↔ paragraph links (option B), since edge removal alone can't break
+     HotpotQA bridges.
+  2. Keep entity merging as part of the method.
+  3. Use a stronger answer model for the full run.
 - **After approval:** scale to 500 questions. Build the LLM graph on free cloud GPUs (Kaggle) or a
   few dollars of paid API; everything else runs locally.
 

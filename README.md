@@ -15,8 +15,8 @@ multi-hop QA ([HotpotQA](https://arxiv.org/abs/1809.09600), dev distractor set).
   HotpotQA EM/F1, indexing time, context tokens.
 
 ## Phases
-1. Setup: env, Ollama models, data download ← *current*
-2. Data: stratified 500-q sample (100 pilot), deduped paragraph corpus with `(title, sent_id)`
+1. Setup: env, Ollama models, data download ✅
+2. Data: stratified 500-q sample (100 pilot), deduped paragraph corpus with `(title, sent_id)` ✅ (`uv run python -m graphrag_study.data.build`)
 3. Index once with GraphRAG; entity→sentence provenance
 4. Baselines: BM25 / dense RAG
 5. Clustering × perturbation, graph metrics

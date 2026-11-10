@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.env
+# large / regenerable data
+data/raw/*.json
+data/raw/*.parquet
+data/raw/hotpot_evaluate_v1.py
+data/processed/*
+!data/processed/.gitkeep
+graphrag_index/output/
+graphrag_index/cache/
+graphrag_index/logs/
+graphrag_index/input/*
+!graphrag_index/input/.gitkeep
+runs/*
+!runs/.gitkeep

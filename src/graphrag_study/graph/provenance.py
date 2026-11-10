@@ -26,3 +26,24 @@ def paragraph_entities(graph: str, corpus: str = "proto") -> dict[str, frozenset
             if any(f" {p} " in txt for p in pats):
                 out[t].add(ent)
     return {t: frozenset(v) for t, v in out.items()}
+
+
+@lru_cache(maxsize=None)
+def entity_sentences(graph: str, corpus: str = "proto") -> dict[str, tuple[tuple[str, int], ...]]:
+    """entity title -> sentence keys (title, sent_id) that mention it. If the entity IS the
+    paragraph's subject (a name equals the paragraph title), every sentence of that paragraph
+    counts: HotpotQA sentences usually refer to the subject by pronoun ("He was born ...")."""
+    sents = pd.read_parquet(f"{PROC}/sentences_{corpus}.parquet")
+    keys = list(zip(sents.title, sents.sent_id))
+    texts = [" " + norm(x) + " " for x in sents.text]
+    by_title: dict[str, list[int]] = {}
+    for i, t in enumerate(sents.title):
+        by_title.setdefault(norm(t), []).append(i)
+    out = {}
+    for ent, names in aliases(graph).items():
+        pats = {norm(n) for n in names if len(norm(n)) > 2}
+        hit = {i for i, txt in enumerate(texts) if any(f" {p} " in txt for p in pats)}
+        for p in pats:
+            hit.update(by_title.get(p, ()))
+        out[ent] = tuple(keys[i] for i in sorted(hit))
+    return out

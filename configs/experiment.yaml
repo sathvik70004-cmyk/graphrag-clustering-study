@@ -5,7 +5,7 @@ data:
   hotpot_file: data/raw/hotpot_dev_distractor_v1.json
   n_questions: 500          # pilot run uses n_pilot first
   n_pilot: 100
-  n_proto: 50              # prototype for the professor demo (first 50 of the 500)
+  n_proto: 20              # prototype for the professor demo (first 20 of the 500); local-GPU sized
   group_size: 5            # paragraphs per GraphRAG document / extraction call
   stratify_by: type         # bridge / comparison
 
@@ -18,10 +18,11 @@ models:
 clustering:
   methods: [leiden, louvain, kcore]
   seeds: [0, 1, 2]          # leiden/louvain are stochastic; kcore is deterministic
+  max_cluster_size: 10      # GraphRAG default: re-split communities larger than this
 
 perturbation:
   fraction: 0.05
-  random_repeats: 5
+  random_repeats: 2        # prototype; 5 for the full study
   critical: edge_betweenness
 
 retrieval:

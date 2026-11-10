@@ -13,6 +13,9 @@ completion_models:
     auth_method: api_key
     call_args:
       temperature: 0
+      extra_body:
+        reasoning_effort: none      # qwen3: disable thinking. Must go via extra_body: litellm silently
+                                    # drops a top-level reasoning_effort for non-OpenAI models.
     retry:
       type: exponential_backoff
     rate_limit:
@@ -30,6 +33,9 @@ completion_models:
     auth_method: api_key
     call_args:
       temperature: 0
+      extra_body:
+        reasoning_effort: none      # qwen3: disable thinking. Must go via extra_body: litellm silently
+                                    # drops a top-level reasoning_effort for non-OpenAI models.
     retry:
       type: exponential_backoff
     rate_limit:
@@ -48,7 +54,7 @@ embedding_models:
     retry:
       type: exponential_backoff
 
-concurrent_requests: 4             # online API; pacing is enforced by rate_limit (RPM/TPM)
+concurrent_requests: 1             # local GPU: 1 at a time (parallel was ~3x slower); online API: raise
 
 input:
   type: text

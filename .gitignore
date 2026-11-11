@@ -25,3 +25,7 @@ graphrag_index_nlp/input/*
 .env.*
 !.env.example
 graphrag_index*/run.log
+
+# local-only files
+docs/linkedin/
+scripts/make_linkedin_figures.py

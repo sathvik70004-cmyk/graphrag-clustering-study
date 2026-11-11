@@ -18,6 +18,7 @@ dependencies = [
     "tqdm>=4.66",
     "typer>=0.12",
     "ujson>=5.10",  # required by official hotpot_evaluate_v1.py
+    "matplotlib>=3.11.2",
 ]
 
 [dependency-groups]
